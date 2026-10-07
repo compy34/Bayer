@@ -1,14 +1,15 @@
-from Data.Controller import get_pharmacy_data
 from convertor import generate_excel_report
+from Data.Controller import get_pharmacy_data, get_requisites_data
 
 
 def main():
-    print("Отримання даних з бази даних MySQL...")
-    df = get_pharmacy_data()
+  print('Отримання даних з бази даних та реквізитів...')
+  df = get_pharmacy_data()
+  df_req = get_requisites_data()
 
-    print("Генерація звіту в Excel з урахуванням прайсу...")
-    generate_excel_report(df, 'marketing_report3.xlsx')
+  print('Генерація фінального звіту в Excel...')
+  generate_excel_report(df, df_req, 'marketing_report.xlsx')
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+  main()
