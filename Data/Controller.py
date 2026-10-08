@@ -1,20 +1,21 @@
 import mysql.connector
 import pandas as pd
 from mysql.connector import Error
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def get_pharmacy_data():
-  try:
-    connection = mysql.connector.connect(
-        host='localhost',
-        database='bayer',
-        user='admin2',
-        password='admin',
-    )
-
-    if connection.is_connected():
-      # Замість t.PERIOD беремо тільки те, що реально є в таблиці
-      query = """
+    try:
+        connection = mysql.connector.connect(
+            host='localhost',
+            database='bayer',
+            user='admin2',
+            password='admin',
+        )
+        if connection.is_connected():
+            query = """
                 SELECT 
                     t.PHARMACY_NAME, 
                     t.BRAND, 
@@ -23,23 +24,30 @@ def get_pharmacy_data():
                 FROM calc_Merch_KA t
                 LEFT JOIN LA_Price p ON t.BRAND = p.Brand
             """
-      df = pd.read_sql(query, connection)
-      return df
-
-  except Error as e:
-    print(f'Помилка при підключенні до MySQL: {e}')
-    return None
-
-  finally:
-    if 'connection' in locals() and connection.is_connected():
-      connection.close()
+            df = pd.read_sql(query, connection)
+            return df
+    except Error as e:
+        print(f'Помилка MySQL: {e}')
+        return None
+    finally:
+        if 'connection' in locals() and connection.is_connected():
+            connection.close()
 
 
 def get_requisites_data():
-  try:
-    # Завантажуємо файл реквізитів з кореня проєкту
-    df_req = pd.read_csv('реквізити.csv', encoding='utf-8')
-    return df_req
-  except Exception as e:
-    print(f'Помилка завантаження файлу реквізитів: {e}')
-    return None
+    return load_requisites_file(PROJECT_ROOT / 'rekvizity.xlsx')
+
+
+def load_requisites_file(filename):
+    """Load requisites from a user-selected CSV or Excel file."""
+    path = Path(filename)
+    if path.suffix.lower() == '.csv':
+        df_req = pd.read_csv(path, encoding='utf-8', dtype=str)
+    elif path.suffix.lower() in {'.xlsx', '.xls'}:
+        df_req = pd.read_excel(path, dtype=str)
+    else:
+        raise ValueError('Підтримуються тільки файли CSV, XLSX або XLS.')
+
+    # Очищуємо заголовки колонок від зайвих пробілів
+    df_req.columns = df_req.columns.astype(str).str.strip()
+    return df_req.fillna('')
