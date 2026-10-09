@@ -159,16 +159,22 @@ class ReportApp:
         if not selected_name or selected_name == 'Усі аптеки':
             return self.df
 
-        # Фільтруємо дані за назвою мережі / аптеки
-        filtered = self.df[
-            self.df['PHARMACY_NAME'].fillna('').astype(str).str.strip().str.lower()
-            == selected_name.lower()
-        ]
-        if filtered.empty:
-            # Якщо точного збігу в базі немає, повертаємо весь датасет для подальшої обробки
-            return self.df
-        return filtered
+        # Перевіряємо наявність колонки CHAIN_NAME в датасеті з бази даних
+        if 'CHAIN_NAME' in self.df.columns:
+            filtered = self.df[
+                self.df['CHAIN_NAME'].fillna('').astype(str).str.strip().str.lower()
+                == selected_name.lower()
+            ]
+        else:
+            # Запасний варіант, якщо колонка називається інакше
+            filtered = self.df[
+                self.df['PHARMACY_NAME'].fillna('').astype(str).str.lower().str.contains(selected_name.lower())
+            ]
 
+        if filtered.empty:
+            return self.df.iloc[0:0]
+
+        return filtered
     def select_requisites_file(self):
         filename = filedialog.askopenfilename(
             title='Виберіть файл реквізитів',
@@ -213,9 +219,7 @@ class ReportApp:
         self._validate_period()
         report = build_report_dataframe(self._filtered_pharmacy_data())
         if report is None or report.empty:
-            report = build_report_dataframe(self.df)
-        if report is None or report.empty:
-            raise ValueError('Немає даних для формування звіту.')
+            raise ValueError('Немає даних для формування звіту за цією мережею.')
         return report
 
     def preview(self):

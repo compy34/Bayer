@@ -15,8 +15,9 @@ def get_pharmacy_data():
             password='admin',
         )
         if connection.is_connected():
-            query = """
+            query = query = """
                 SELECT 
+                    t.CHAIN_NAME,
                     t.PHARMACY_NAME, 
                     t.BRAND, 
                     t.MERCH,
