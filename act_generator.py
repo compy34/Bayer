@@ -1,25 +1,19 @@
 from num2words import num2words
-import openpyxl
 from openpyxl.styles import Alignment, Border, Font, Side
-from openpyxl.utils import get_column_letter
 
 
 def generate_act_sheet(
-    wb,
-    df_req,
-    total_sum_without_vat,
-    period_start,
-    period_end,
-    selected_pharmacy='Усі аптеки',
-    act_number='1',
+        ws,
+        df_req,
+        total_sum_without_vat,
+        period_start,
+        period_end,
+        selected_pharmacy='Усі аптеки',
+        act_number='1',
+        contract_no='260326',
+        contract_date='01 березня 2026 року',
+        executor_name='ПрАТ «Аптеки Запоріжжя»'
 ):
-    sheet_name = 'Акт'
-    if sheet_name in wb.sheetnames:
-        ws = wb[sheet_name]
-        ws.views.sheetView[0].tabSelected = True
-    else:
-        ws = wb.create_sheet(title=sheet_name)
-
     thin_border = Border(
         left=Side(style='thin', color='000000'),
         right=Side(style='thin', color='000000'),
@@ -30,9 +24,7 @@ def generate_act_sheet(
     left_alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
     right_alignment = Alignment(horizontal='right', vertical='center', wrap_text=True)
 
-    contract_no = '260326'
-    contract_date = '01 березня 2026 року'
-    executor_name = 'ПрАТ «Аптеки Запоріжжя»'
+    # Дефолтні реквізити на випадок, якщо файл не завантажено або колонка порожня
     full_executor_requisites = [
         executor_name,
         'Юридична адреса:',
@@ -49,18 +41,11 @@ def generate_act_sheet(
         '_____________________ / ________ /',
     ]
 
-    # Універсальний пошук реквізитів для акта за вибраною мережею
     if df_req is not None and not df_req.empty:
         matched_row = None
         clean_selected = str(selected_pharmacy).strip()
-
         target_col = None
-        for col_candidate in [
-            'chain_name',
-            'Клиент из базы данных',
-            'Мережа',
-            'Назва',
-        ]:
+        for col_candidate in ['chain_name', 'Клиент из базы данных', 'Мережа', 'Назва']:
             if col_candidate in df_req.columns:
                 target_col = col_candidate
                 break
@@ -69,7 +54,7 @@ def generate_act_sheet(
             filtered_req = df_req[
                 df_req[target_col].astype(str).str.strip().str.lower()
                 == clean_selected.lower()
-            ]
+                ]
             if not filtered_req.empty:
                 matched_row = filtered_req.iloc[0]
 
@@ -77,14 +62,14 @@ def generate_act_sheet(
             matched_row = df_req.iloc[0]
 
         executor_name = str(
-            matched_row.get(
-                'Виконавець', matched_row.get('Юридическое лицо', executor_name)
-            )
+            matched_row.get('Виконавець', matched_row.get('Юридическое лицо', executor_name))
         )
         contract_no = str(matched_row.get('№ договора', contract_no))
         contract_date = str(matched_row.get('Дата договора', contract_date))
+
+        # БЕРЕМО ГОТОВІ РЕКВІЗИТИ З КОЛОНКИ ФАЙЛУ
         raw_req_text = str(matched_row.get('Реквизити', ''))
-        if raw_req_text and raw_req_text != 'nan':
+        if raw_req_text and raw_req_text.lower() != 'nan':
             full_executor_requisites = [
                 line.strip() for line in raw_req_text.split('\n') if line.strip()
             ]

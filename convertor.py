@@ -3,20 +3,36 @@ from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 from act_generator import generate_act_sheet
 
+# Списки брендів для розділення
+LIK_BRANDS = [
+    'Бепантен', 'Антифлу', 'Еріус', 'Реліф', 'Ренні',
+    'Терафлекс + Тералів', 'Бепантен Плюс', 'Тералів',
+    'Кальцемін', 'Терафлекс'
+]
 
-def build_report_dataframe(df):
-    """Build the pharmacy/brand summary used by both the preview and Excel export."""
+
+def build_report_dataframe(df, brand_filter_list=None):
+    """Build the pharmacy/brand summary filtered by category."""
     if df is None or df.empty:
         return None
-    pivot_df = df.pivot_table(
+
+    work_df = df.copy()
+    if brand_filter_list is not None:
+        work_df = work_df[work_df['BRAND'].isin(brand_filter_list)]
+
+    if work_df.empty:
+        return None
+
+    pivot_df = work_df.pivot_table(
         index='PHARMACY_NAME',
         columns='BRAND',
         values='MERCH',
         aggfunc='sum',
         fill_value=0,
     ).reset_index()
+
     price_dict = (
-        df.drop_duplicates(subset=['BRAND']).set_index('BRAND')['Price'].to_dict()
+        work_df.drop_duplicates(subset=['BRAND']).set_index('BRAND')['Price'].to_dict()
     )
     brand_columns = pivot_df.columns[1:]
     total_sum = 0
@@ -26,29 +42,9 @@ def build_report_dataframe(df):
     return pivot_df
 
 
-def generate_excel_report(
-    df,
-    df_req,
-    output_filename='marketing_report.xlsx',
-    period_start=None,
-    period_end=None,
-    selected_pharmacy='Усі аптеки',
-):
-    if df is None or df.empty:
-        return
-
-    pivot_df = build_report_dataframe(df)
-    brand_columns = pivot_df.columns[1:]
-
-    with pd.ExcelWriter(output_filename, engine='openpyxl') as writer:
-        pivot_df.to_excel(writer, index=False, startrow=9, sheet_name='Звіт')
-
-    import openpyxl
-    wb = openpyxl.load_workbook(output_filename)
-    ws = wb['Звіт']
-
-    ws.delete_rows(10, 2)
-
+def fill_worksheet_data(ws, pivot_df, brand_columns, period_start, period_end, executor_name, contract_no,
+                        contract_date):
+    """Допоміжна функція для заповнення структури звіту на аркуші Excel"""
     thin_border = Border(
         left=Side(style='thin', color='000000'),
         right=Side(style='thin', color='000000'),
@@ -67,47 +63,6 @@ def generate_excel_report(
     start_let = get_column_letter(header_start_col)
     end_let = get_column_letter(header_end_col)
 
-    contract_no = '260326'
-    contract_date = '01 березня 2026 року'
-    executor_name = 'ПрАТ «Аптеки Запоріжжя»'
-
-    # Універсальний пошук реквізитів за chain_name або Клиент из базы данных
-    if df_req is not None and not df_req.empty:
-        matched_row = None
-        clean_selected = str(selected_pharmacy).strip()
-
-        target_col = None
-        for col_candidate in [
-            'chain_name',
-            'Клиент из базы данных',
-            'Мережа',
-            'Назва',
-        ]:
-            if col_candidate in df_req.columns:
-                target_col = col_candidate
-                break
-
-        if clean_selected and clean_selected != 'Усі аптеки' and target_col:
-            filtered_req = df_req[
-                df_req[target_col].astype(str).str.strip().str.lower()
-                == clean_selected.lower()
-            ]
-            if not filtered_req.empty:
-                matched_row = filtered_req.iloc[0]
-
-        if matched_row is None:
-            matched_row = df_req.iloc[0]
-
-        executor_name = str(
-            matched_row.get(
-                'Виконавець', matched_row.get('Юридическое лицо', executor_name)
-            )
-        )
-        contract_no = str(matched_row.get('№ договора', contract_no))
-        contract_date = str(matched_row.get('Дата договора', contract_date))
-
-    period_start = period_start or '01.08.2026'
-    period_end = period_end or '31.08.2026'
     period_str = f'за період з "{period_start}" по "{period_end}".'
     end_date_str = period_end
 
@@ -134,7 +89,7 @@ def generate_excel_report(
     ws[f'{start_let}4'].font = Font(bold=True, size=10)
     ws[f'{start_let}4'].alignment = Alignment(horizontal='center', vertical='center')
 
-    ws.cell(row=6, column=header_start_col, value='Дата').font = Font(size=10)
+    ws.cell(row=6, column=header_start_col, value='м. Київ').font = Font(size=10)
     ws.cell(row=6, column=header_start_col).alignment = left_alignment
     ws.cell(row=6, column=header_end_col, value=end_date_str).font = Font(size=10)
     ws.cell(row=6, column=header_end_col).alignment = right_alignment
@@ -224,10 +179,10 @@ def generate_excel_report(
         cell_sum.number_format = '#,##0.00'
 
     for row in ws.iter_rows(
-        min_row=header_row_1,
-        max_row=header_row_2,
-        min_col=1,
-        max_col=sum_col_idx,
+            min_row=header_row_1,
+            max_row=header_row_2,
+            min_col=1,
+            max_col=sum_col_idx,
     ):
         for cell in row:
             cell.alignment = center_alignment
@@ -301,16 +256,124 @@ def generate_excel_report(
             max_len = max(len(str(cell.value or '')) for cell in col)
             ws.column_dimensions[col_letter].width = max(max_len + 3, 15)
 
-    total_sum_no_vat = pivot_df['Загальна сума'].sum()
+
+def generate_excel_report(
+        df,
+        df_req,
+        output_filename='marketing_report.xlsx',
+        period_start=None,
+        period_end=None,
+        selected_pharmacy='Усі аптеки',
+):
+    if df is None or df.empty:
+        return
+
+    # Розділяємо датасет на ЛІК та решту (ДД)
+    available_brands = df['BRAND'].unique()
+    lik_list = [b for b in AVAILABLE_BRANDS_CHECK(available_brands) if b in LIK_BRANDS]
+    dd_list = [b for b in available_brands if b not in LIK_BRANDS]
+
+    pivot_lik = build_report_dataframe(df, lik_list if lik_list else [])
+    pivot_dd = build_report_dataframe(df, dd_list if dd_list else [])
+
+    period_start = period_start or 'No date'
+    period_end = period_end or 'No date'
+
+    contract_no = '260326'
+    contract_date = '01 березня 2026 року'
+    executor_name = 'ПрАТ «Аптеки Запоріжжя»'
+
+    if df_req is not None and not df_req.empty:
+        matched_row = None
+        clean_selected = str(selected_pharmacy).strip()
+        target_col = None
+        for col_candidate in ['chain_name', 'Клиент из базы данных', 'Мережа', 'Назва']:
+            if col_candidate in df_req.columns:
+                target_col = col_candidate
+                break
+
+        if clean_selected and clean_selected != 'Усі аптеки' and target_col:
+            filtered_req = df_req[
+                df_req[target_col].astype(str).str.strip().str.lower()
+                == clean_selected.lower()
+                ]
+            if not filtered_req.empty:
+                matched_row = filtered_req.iloc[0]
+
+        if matched_row is None:
+            matched_row = df_req.iloc[0]
+
+        executor_name = str(
+            matched_row.get('Виконавець', matched_row.get('Юридическое лицо', executor_name))
+        )
+        contract_no = str(matched_row.get('№ договора', contract_no))
+        contract_date = str(matched_row.get('Дата договора', contract_date))
+
+    import openpyxl
+    wb = openpyxl.Workbook()
+    # Видаляємо дефолтний аркуш
+    default_sheet = wb.active
+
+    # 1. Аркуш Звіт(ЛІК)
+    if pivot_lik is not None and not pivot_lik.empty:
+        ws_lik = wb.create_sheet(title='Звіт(ЛІК)')
+        fill_worksheet_data(ws_lik, pivot_lik, pivot_lik.columns[1:], period_start, period_end, executor_name,
+                            contract_no, contract_date)
+        sum_lik = pivot_lik['Загальна сума'].sum()
+    else:
+        sum_lik = 0.0
+
+    # 2. Аркуш Акт(ЛІК)
+    ws_akt_lik = wb.create_sheet(title='Акт(ЛІК)')
     generate_act_sheet(
-        wb=wb,
+        ws=ws_akt_lik,
         df_req=df_req,
-        total_sum_without_vat=total_sum_no_vat,
+        total_sum_without_vat=sum_lik,
         period_start=period_start,
         period_end=period_end,
         selected_pharmacy=selected_pharmacy,
         act_number='1',
+        contract_no=contract_no,
+        contract_date=contract_date,
+        executor_name=executor_name
     )
+
+    # 3. Аркуш Звіт(ДД)
+    if pivot_dd is not None and not pivot_dd.empty:
+        ws_dd = wb.create_sheet(title='Звіт(ДД)')
+        fill_worksheet_data(ws_dd, pivot_dd, pivot_dd.columns[1:], period_start, period_end, executor_name, contract_no,
+                            contract_date)
+        sum_dd = pivot_dd['Загальна сума'].sum()
+    else:
+        sum_dd = 0.0
+
+    # 4. Аркуш Акт(ДД)
+    ws_akt_dd = wb.create_sheet(title='Акт(ДД)')
+    generate_act_sheet(
+        ws=ws_akt_dd,
+        df_req=df_req,
+        total_sum_without_vat=sum_dd,
+        period_start=period_start,
+        period_end=period_end,
+        selected_pharmacy=selected_pharmacy,
+        act_number='2',
+        contract_no=contract_no,
+        contract_date=contract_date,
+        executor_name=executor_name
+    )
+
+    # Видаляємо дефолтний аркуш, якщо він залишився порожнім
+    if default_sheet.title in wb.sheetnames and len(wb.sheetnames) > 1:
+        # Перевіримо, чи це саме той початковий дефолтний аркуш ("Sheet")
+        if default_sheet.title == 'Sheet':
+            wb.remove(default_sheet)
 
     wb.save(output_filename)
     return output_filename
+
+    wb.save(output_filename)
+    return output_filename
+
+
+def AVAILABLE_BRANDS_CHECK(brands):
+    return brands
