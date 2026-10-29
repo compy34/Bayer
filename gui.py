@@ -18,10 +18,11 @@ class ReportApp:
         self.root.minsize(900, 600)
         self.df = None
         self.df_req = None
+        self.loaded_period = None
+        self.loading = False
         self.requisites_file_var = tk.StringVar(value='')
         self.pharmacy_name_var = tk.StringVar(value='')
         self._build_ui()
-        self._load_data_async()
 
     def _build_ui(self):
         root_frame = ttk.Frame(self.root, padding=12)
@@ -83,8 +84,14 @@ class ReportApp:
         ttk.Button(buttons, text='Завантажити Excel', command=self.download).pack(
             side='left'
         )
+        self.load_button = ttk.Button(
+            buttons, text='Завантажити дані за період', command=self.load_data
+        )
+        self.load_button.pack(side='left', padx=(8, 0))
 
-        self.status_var = tk.StringVar(value='Завантаження даних з БД...')
+        self.status_var = tk.StringVar(
+            value='Вкажіть період і натисніть "Завантажити дані за період".'
+        )
         ttk.Label(root_frame, textvariable=self.status_var).grid(
             row=5, column=0, columnspan=3, sticky='w', pady=(0, 8)
         )
@@ -109,20 +116,56 @@ class ReportApp:
             yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set
         )
 
-    def _load_data_async(self):
+    def _query_period(self):
+        start, end = self._validate_period()
+        start_date = datetime.strptime(start, '%d.%m.%Y').strftime('%Y-%m-%d')
+        end_date = datetime.strptime(end, '%d.%m.%Y').strftime('%Y-%m-%d')
+        return start_date, end_date
+
+    def load_data(self):
+        try:
+            period = self._query_period()
+        except ValueError as error:
+            messagebox.showwarning('Попередження', str(error))
+            return
+
+        if self.loading:
+            return
+
+        self._load_data_async(period)
+
+    def _load_data_async(self, period):
+        self.loading = True
+        self.load_button.configure(state='disabled')
+        self.status_var.set(
+            f'Завантаження даних з БД за період {period[0]} — {period[1]}...'
+        )
+
         def load():
-            data = get_pharmacy_data()
-            self.root.after(0, lambda: self._data_loaded(data))
+            try:
+                data = get_pharmacy_data(*period)
+                error = None
+            except (OSError, TypeError, ValueError) as load_error:
+                data = None
+                error = load_error
+            self.root.after(0, lambda: self._data_loaded(data, period, error))
 
         threading.Thread(target=load, daemon=True).start()
 
-    def _data_loaded(self, data):
+    def _data_loaded(self, data, period, error=None):
+        self.loading = False
+        self.load_button.configure(state='normal')
         self.df = data
-        if data is None or data.empty:
-            self.status_var.set('Помилка завантаження з БД або дані порожні.')
+        if error is not None:
+            self.loaded_period = None
+            self.status_var.set(f'Помилка завантаження з БД: {error}')
+        elif data is None or data.empty:
+            self.loaded_period = None
+            self.status_var.set('За вказаний період дані відсутні.')
         else:
+            self.loaded_period = period
             self.status_var.set(
-                f'Дані з БД успішно завантажено. Рядків: {len(data)}'
+                f'Дані за період завантажено. Рядків: {len(data)}'
             )
 
     def _update_pharmacy_combo(self):
@@ -216,7 +259,11 @@ class ReportApp:
 
     def _get_preview_data(self):
         self._selected_requisites()
-        self._validate_period()
+        period = self._query_period()
+        if self.loaded_period != period:
+            raise ValueError(
+                'Спочатку завантажте дані для вказаного періоду.'
+            )
         report = build_report_dataframe(self._filtered_pharmacy_data())
         if report is None or report.empty:
             raise ValueError('Немає даних для формування звіту за цією мережею.')

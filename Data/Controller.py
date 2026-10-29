@@ -6,7 +6,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def get_pharmacy_data():
+def get_pharmacy_data(period_start, period_end):
     try:
         connection = mysql.connector.connect(
             host='localhost',
@@ -15,7 +15,7 @@ def get_pharmacy_data():
             password='admin',
         )
         if connection.is_connected():
-            query = query = """
+            query = """
                 SELECT 
                     t.CHAIN_NAME,
                     t.PHARMACY_NAME, 
@@ -24,8 +24,9 @@ def get_pharmacy_data():
                     COALESCE(p.Price, 0) AS Price
                 FROM calc_Merch_KA t
                 LEFT JOIN LA_Price p ON t.BRAND = p.Brand
+                WHERE t.PERIOD >= %s AND t.PERIOD <= %s
             """
-            df = pd.read_sql(query, connection)
+            df = pd.read_sql(query, connection, params=(period_start, period_end))
             return df
     except Error as e:
         print(f'Помилка MySQL: {e}')
