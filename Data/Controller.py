@@ -1,6 +1,5 @@
-import mysql.connector
+import pyodbc
 import pandas as pd
-from mysql.connector import Error
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -8,31 +7,38 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 def get_pharmacy_data(period_start, period_end):
     try:
-        connection = mysql.connector.connect(
-            host='localhost',
-            database='bayer',
-            user='admin2',
-            password='admin',
+        # Налаштування підключення до MS SQL Server через Windows Auth та Native Client 11.0
+        conn_str = (
+            r'DRIVER={SQL Server Native Client 11.0};'
+            r'SERVER=BYDE276YZ8D.bayer.cnb\I0940,58321;'
+            r'DATABASE=BAYER_CH_UA;'
+            r'Trusted_Connection=yes;'
         )
-        if connection.is_connected():
-            query = """
-                SELECT 
-                    t.CHAIN_NAME,
-                    t.PHARMACY_NAME, 
-                    t.BRAND, 
-                    t.MERCH,
-                    COALESCE(p.Price, 0) AS Price
-                FROM calc_Merch_KA t
-                LEFT JOIN LA_Price p ON t.BRAND = p.Brand
-                WHERE t.PERIOD >= %s AND t.PERIOD <= %s
-            """
-            df = pd.read_sql(query, connection, params=(period_start, period_end))
-            return df
-    except Error as e:
-        print(f'Помилка MySQL: {e}')
+        
+        connection = pyodbc.connect(conn_str)
+        
+        # У pyodbc для параметрів використовується '?' замість '%s'
+        query = """
+            SELECT 
+                t.CHAIN_NAME,
+                t.PHARMACY_NAME, 
+                t.BRAND, 
+                t.MERCH,
+                COALESCE(p.Price, 0) AS Price
+            FROM calc_Merch_KA t
+            LEFT JOIN LA_Price p ON t.BRAND = p.Brand
+            WHERE t.PERIOD >= ? AND t.PERIOD <= ?
+        """
+        # Передаємо параметри у вигляді кортежу
+        df = pd.read_sql(query, connection, params=(period_start, period_end))
+        return df
+        
+    except pyodbc.Error as e:
+        print(f'Помилка MS SQL Server: {e}')
         return None
+        
     finally:
-        if 'connection' in locals() and connection.is_connected():
+        if 'connection' in locals():
             connection.close()
 
 

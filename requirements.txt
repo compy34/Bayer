@@ -1,5 +1,5 @@
-mysql-connector-python
 pandas
 openpyxl
 num2words
-Tkinter
+SQLAlchemy
+pyodbc
