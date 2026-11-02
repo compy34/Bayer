@@ -35,6 +35,42 @@ DD_BRANDS = [
     'Бепантен Плюс__',
 ]
 
+MHL_LIK_SKU = [
+    'Еріус сироп 0.5 мг/мл 60мл',
+    'Еріус таблетки 5 мг № 10',
+    'Антифлу Кідс, порошок пакетики №5',
+    'Аспірин С, таб. № 10',
+    'Кальцемін Адванс №60',
+    'Кальцемін Сільвер №60',
+    'Бепантен, крем 5%, туба 30г №1',
+    'Бепантен, мазь 5%, туба 30г №1',
+    'Бепантен, мазь 5%, туба 100г №1',
+    'Бепантен Плюс, крем, туба 30г №1',
+    'Елевіт Пронаталь, т.в/о №100',
+    'Реліф, супозиторїї ректальні №12',
+    'Реліф Адванс, супозиторїї ректальні №12',
+    'Реліф Про, супозиторїї ректальні №10',
+    'Реліф Ультра, супозиторїї ректальні №12',
+    'Ренні, табл. жув., мент. смак. №24',
+    "Ренні б/ц м'ятні,табл. жув.№24",
+    'Ренні з апельсиновим смаком, табл. жув. №24',
+    'Тералів, табл. 220мг №12',
+    'Терафлекс, капсули №60',
+    'Терафлекс Адванс, капсули №60',
+    'Терафлекс, капсули №120',
+]
+
+MHL_DD_SKU = [
+    'Супрадин Актив, табл. №30',
+    'Супрадин Актив, табл. шип., №15',
+    'Супрадин Ведмежуйки №30',
+    'Супрадин Ведмежуйки №60',
+    'Супрадин Бустер, табл. шип., №15',
+    'Бепантен Сенсідерм',
+    'Елевіт-Комплекс 2, капс. № 30',
+    'Елевіт-Комплекс 3, капс. № 30',
+]
+
 
 
 
@@ -80,14 +116,11 @@ def build_mhl_dataframe(df, brand_filter_list):
         )
 
     work_df = df.copy()
-    allowed_brands = {
-        str(brand).strip().casefold() for brand in brand_filter_list
+    allowed_values = {
+        str(value).strip().casefold() for value in brand_filter_list
     }
-    brand_values = work_df['BRAND'].fillna('').astype(str).str.strip().str.casefold()
     sku_values = work_df['SKU_UA'].fillna('').astype(str).str.strip().str.casefold()
-    work_df = work_df[
-        brand_values.isin(allowed_brands) | sku_values.isin(allowed_brands)
-    ].copy()
+    work_df = work_df[sku_values.isin(allowed_values)].copy()
     if work_df.empty:
         return pd.DataFrame(
             columns=[
@@ -120,15 +153,33 @@ def mhl_brand_counts(df):
     """Return category counts for diagnostics before Excel generation."""
     if df is None or df.empty or 'BRAND' not in df.columns:
         return 0, 0, 0
-    brands = df['BRAND'].fillna('').astype(str).str.strip().str.casefold()
     sku_names = df['SKU_UA'].fillna('').astype(str).str.strip().str.casefold()
-    lik = {str(brand).strip().casefold() for brand in LIK_BRANDS}
-    dd = {str(brand).strip().casefold() for brand in DD_BRANDS}
-    lik_match = brands.isin(lik) | sku_names.isin(lik)
-    dd_match = brands.isin(dd) | sku_names.isin(dd)
+    lik = {str(value).strip().casefold() for value in MHL_LIK_SKU}
+    dd = {str(value).strip().casefold() for value in MHL_DD_SKU}
+    lik_match = sku_names.isin(lik)
+    dd_match = sku_names.isin(dd)
     return int(lik_match.sum()), int(dd_match.sum()), int(
         (~(lik_match | dd_match)).sum()
     )
+
+
+def mhl_unknown_samples(df, limit=8):
+    """Return real database values that are not classified by the lists."""
+    if df is None or df.empty:
+        return []
+    sku_names = df['SKU_UA'].fillna('').astype(str).str.strip()
+    known = {
+        str(value).strip().casefold()
+        for value in MHL_LIK_SKU + MHL_DD_SKU
+    }
+    unknown = df.loc[
+        ~sku_names.str.casefold().isin(known),
+        ['BRAND', 'SKU_UA'],
+    ].drop_duplicates()
+    return [
+        f'{brand} / {sku}'
+        for brand, sku in unknown.head(limit).itertuples(index=False, name=None)
+    ]
 
 
 def fill_mhl_worksheet(ws, mhl_df, period_start, period_end, contract_no, contract_date):
@@ -456,8 +507,8 @@ def generate_excel_report(
     else:
         pivot_lik = None
         pivot_dd = None
-    mhl_lik = build_mhl_dataframe(mhl_df, LIK_BRANDS)
-    mhl_dd = build_mhl_dataframe(mhl_df, DD_BRANDS)
+    mhl_lik = build_mhl_dataframe(mhl_df, MHL_LIK_SKU)
+    mhl_dd = build_mhl_dataframe(mhl_df, MHL_DD_SKU)
 
     period_start = period_start or 'No date'
     period_end = period_end or 'No date'

@@ -3,7 +3,12 @@ import tkinter as tk
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from convertor import build_report_dataframe, generate_excel_report, mhl_brand_counts
+from convertor import (
+    build_report_dataframe,
+    generate_excel_report,
+    mhl_brand_counts,
+    mhl_unknown_samples,
+)
 from Data.Controller import get_mhl_data, get_pharmacy_data, load_requisites_file
 
 
@@ -182,11 +187,14 @@ class ReportApp:
             if mhl_error is not None:
                 status += f'; помилка MHL: {mhl_error}'
             else:
+                unknown_samples = mhl_unknown_samples(mhl_data)
                 status += (
                     f'; MHL SQL: {len(mhl_data)} рядків; '
                     f'ЛІК: {lik_count}; ДД: {dd_count}; '
                     f'невідомі: {unknown_count}'
                 )
+                if unknown_samples:
+                    status += f'; приклади: {" | ".join(unknown_samples)}'
             self.status_var.set(status)
 
     def _update_pharmacy_combo(self):
