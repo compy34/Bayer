@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from convertor import build_report_dataframe, generate_excel_report
-from Data.Controller import get_pharmacy_data, load_requisites_file
+from Data.Controller import get_mhl_data, get_pharmacy_data, load_requisites_file
 
 
 class ReportApp:
@@ -17,6 +17,7 @@ class ReportApp:
         self.root.geometry('1100x700')
         self.root.minsize(900, 600)
         self.df = None
+        self.df_mhl = None
         self.df_req = None
         self.loaded_period = None
         self.loading = False
@@ -144,18 +145,23 @@ class ReportApp:
         def load():
             try:
                 data = get_pharmacy_data(*period)
+                mhl_data = get_mhl_data(*period)
                 error = None
             except (OSError, TypeError, ValueError) as load_error:
                 data = None
+                mhl_data = None
                 error = load_error
-            self.root.after(0, lambda: self._data_loaded(data, period, error))
+            self.root.after(
+                0, lambda: self._data_loaded(data, mhl_data, period, error)
+            )
 
         threading.Thread(target=load, daemon=True).start()
 
-    def _data_loaded(self, data, period, error=None):
+    def _data_loaded(self, data, mhl_data, period, error=None):
         self.loading = False
         self.load_button.configure(state='normal')
         self.df = data
+        self.df_mhl = mhl_data
         if error is not None:
             self.loaded_period = None
             self.status_var.set(f'Помилка завантаження з БД: {error}')
@@ -318,6 +324,7 @@ class ReportApp:
                 period_start=start,
                 period_end=end,
                 selected_pharmacy=self.pharmacy_name_var.get(),
+                mhl_df=self.df_mhl,
             )
         except (OSError, ValueError, KeyError) as error:
             messagebox.showerror('Помилка', str(error))

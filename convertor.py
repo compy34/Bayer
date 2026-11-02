@@ -69,6 +69,135 @@ def build_report_dataframe(df, brand_filter_list=None):
     return pivot_df
 
 
+def build_mhl_dataframe(df, brand_filter_list):
+    """Aggregate MHL data for one product category over the selected period."""
+    if df is None or df.empty:
+        return pd.DataFrame(
+            columns=[
+                'DRUG_ID', 'Назва товару', 'BRAND', 'PENETRATION',
+                'PRICE_CP', 'SUPPLY', 'Сума закупленого товару',
+            ]
+        )
+
+    work_df = df.copy()
+    work_df['BRAND'] = work_df['BRAND'].fillna('').astype(str).str.strip()
+    work_df = work_df[work_df['BRAND'].isin(brand_filter_list)].copy()
+    if work_df.empty:
+        return pd.DataFrame(
+            columns=[
+                'DRUG_ID', 'Назва товару', 'BRAND', 'PENETRATION',
+                'PRICE_CP', 'SUPPLY', 'Сума закупленого товару',
+            ]
+        )
+
+    work_df['_date'] = pd.to_datetime(work_df['DATE'], errors='coerce')
+    for column in ['PENETRATION', 'PRICE_CP', 'SUPPLY', 'PENETRATION_TARGET']:
+        work_df[column] = pd.to_numeric(work_df[column], errors='coerce').fillna(0)
+    work_df = work_df.sort_values('_date')
+    group_columns = ['DRUG_ID', 'SKU_UA', 'BRAND']
+    result = work_df.groupby(group_columns, dropna=False).agg(
+        PENETRATION=('PENETRATION', 'last'),
+        PRICE_CP=('PRICE_CP', 'last'),
+        SUPPLY=('SUPPLY', 'sum'),
+        PENETRATION_TARGET=('PENETRATION_TARGET', 'last'),
+    ).reset_index()
+    result['Сума закупленого товару'] = (
+        result['SUPPLY'] * result['PRICE_CP']
+    ).where(
+        result['PENETRATION'] >= result['PENETRATION_TARGET'],
+        0,
+    )
+    return result.rename(columns={'SKU_UA': 'Назва товару'})
+
+
+def fill_mhl_worksheet(ws, mhl_df, period_start, period_end, contract_no, contract_date):
+    """Write one MHL sheet with totals and VAT."""
+    thin_border = Border(
+        left=Side(style='thin'), right=Side(style='thin'),
+        top=Side(style='thin'), bottom=Side(style='thin'),
+    )
+    center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    right = Alignment(horizontal='right', vertical='center', wrap_text=True)
+    columns = [
+        '№ п/п', 'Назва товару', 'PENETRATION', 'PRICE_CP',
+        'SUPPLY', 'Сума закупленого товару',
+    ]
+    headers = [
+        '№ п/п',
+        'Назва товару',
+        'Відсоток аптек мережі, які мають товар',
+        'Розрахункова ціна за одиницю товару, грн',
+        'Кількість упаковок товару, закуплена аптечною мережею',
+        'Сума закупленого товару, грн',
+    ]
+    end_col = len(headers)
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=end_col)
+    ws.cell(1, 1, f'MHL за період з {period_start} по {period_end}')
+    ws.cell(1, 1).font = Font(bold=True, size=12)
+    ws.cell(1, 1).alignment = center
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=end_col)
+    ws.cell(
+        2, 1,
+        'Винагорода за забезпечення наявності у аптечному закладі '
+        f'Товарів із Рекомендованого переліку Товару Замовника, згідно '
+        f'пункту 2.2.2 Договору про маркетингові послуги № {contract_no} '
+        f'від {contract_date}',
+    )
+    ws.cell(2, 1).alignment = center
+    for col_idx, header in enumerate(headers, 1):
+        cell = ws.cell(4, col_idx, header)
+        cell.font = Font(bold=True, size=9)
+        cell.alignment = center
+        cell.border = thin_border
+
+    for row_idx, (_, row) in enumerate(mhl_df.iterrows(), 5):
+        values = [
+            row_idx - 4, row['Назва товару'], row['PENETRATION'],
+            row['PRICE_CP'], row['SUPPLY'], row['Сума закупленого товару'],
+        ]
+        for col_idx, value in enumerate(values, 1):
+            cell = ws.cell(row_idx, col_idx, value)
+            cell.alignment = center
+            cell.border = thin_border
+            if col_idx >= 4:
+                cell.number_format = '#,##0.00'
+
+    first_data_row = 5
+    last_data_row = max(first_data_row, 4 + len(mhl_df))
+    total_row = last_data_row + 2
+    ws.cell(total_row, end_col - 1, 'Всього закуплено товару, грн.')
+    ws.cell(total_row, end_col - 1).alignment = right
+    ws.cell(total_row, end_col - 1).font = Font(bold=True)
+    total_cell = ws.cell(
+        total_row, end_col,
+        f'=SUM({get_column_letter(end_col)}{first_data_row}:'
+        f'{get_column_letter(end_col)}{last_data_row})',
+    )
+    total_cell.number_format = '#,##0.00'
+    total_cell.alignment = right
+    total_cell.font = Font(bold=True)
+    total_cell.border = thin_border
+
+    vat_row = total_row + 1
+    ws.cell(vat_row, end_col - 1, 'ПДВ 20%')
+    ws.cell(vat_row, end_col - 1).alignment = right
+    vat_cell = ws.cell(vat_row, end_col, f'={get_column_letter(end_col)}{total_row}*0.2')
+    vat_cell.number_format = '#,##0.00'
+    vat_cell.alignment = right
+    total_with_vat_row = vat_row + 1
+    ws.cell(total_with_vat_row, end_col - 1, 'Всього з ПДВ')
+    ws.cell(total_with_vat_row, end_col - 1).alignment = right
+    total_with_vat = ws.cell(
+        total_with_vat_row, end_col,
+        f'={get_column_letter(end_col)}{total_row}+'
+        f'{get_column_letter(end_col)}{vat_row}',
+    )
+    total_with_vat.number_format = '#,##0.00'
+    total_with_vat.alignment = right
+    for column, width in enumerate([8, 42, 18, 18, 20, 22], 1):
+        ws.column_dimensions[get_column_letter(column)].width = width
+
+
 def fill_worksheet_data(ws, pivot_df, brand_columns, period_start, period_end, executor_name, contract_no,
                         contract_date):
     """Допоміжна функція для заповнення структури звіту на аркуші Excel"""
@@ -291,6 +420,7 @@ def generate_excel_report(
         period_start=None,
         period_end=None,
         selected_pharmacy='Усі аптеки',
+        mhl_df=None,
 ):
     if df is None or df.empty:
         return
@@ -302,6 +432,8 @@ def generate_excel_report(
 
     pivot_lik = build_report_dataframe(df, lik_list if lik_list else [])
     pivot_dd = build_report_dataframe(df, dd_list if dd_list else [])
+    mhl_lik = build_mhl_dataframe(mhl_df, LIK_BRANDS)
+    mhl_dd = build_mhl_dataframe(mhl_df, DD_BRANDS)
 
     period_start = period_start or 'No date'
     period_end = period_end or 'No date'
@@ -387,6 +519,15 @@ def generate_excel_report(
         contract_no=contract_no,
         contract_date=contract_date,
         executor_name=executor_name
+    )
+
+    ws_mhl_lik = wb.create_sheet(title='MHL(ЛІК)')
+    fill_mhl_worksheet(
+        ws_mhl_lik, mhl_lik, period_start, period_end, contract_no, contract_date
+    )
+    ws_mhl_dd = wb.create_sheet(title='MHL(ДД)')
+    fill_mhl_worksheet(
+        ws_mhl_dd, mhl_dd, period_start, period_end, contract_no, contract_date
     )
 
     # Видаляємо дефолтний аркуш, якщо він залишився порожнім

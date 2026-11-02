@@ -42,6 +42,50 @@ def get_pharmacy_data(period_start, period_end):
             connection.close()
 
 
+def get_mhl_data(period_start, period_end):
+    """Load MHL metrics and the latest penetration target for each product."""
+    connection = None
+    try:
+        conn_str = (
+            r'DRIVER={SQL Server Native Client 11.0};'
+            r'SERVER=BYDE276YZ8D.bayer.cnb\I0940,58321;'
+            r'DATABASE=BAYER_CH_UA;'
+            r'Trusted_Connection=yes;'
+        )
+        connection = pyodbc.connect(conn_str)
+        query = """
+            SELECT
+                main.[DATE],
+                main.[CHAIN_ID],
+                main.[CHAIN_NAME],
+                main.[DRUG_ID],
+                sku.[SKU_UA],
+                main.[BRAND],
+                main.[PENETRATION],
+                main.[PRICE_CP],
+                main.[SUPPLY],
+                target.[PENETRATION_TARGET]
+            FROM [dbo].[calc_KA] AS main
+            LEFT JOIN [dbo].[key_SKU] AS sku
+                ON sku.[DRUG_ID] = main.[DRUG_ID]
+            OUTER APPLY (
+                SELECT TOP 1
+                    plan.[PENETRATION_TARGET]
+                FROM [dbo].[KA_Penetration_plan] AS plan
+                WHERE plan.[DRUG_ID] = main.[DRUG_ID]
+                  AND plan.[PERIOD] <= main.[DATE]
+                ORDER BY plan.[PERIOD] DESC
+            ) AS target
+            WHERE main.[DATE] >= ? AND main.[DATE] <= ?
+        """
+        return pd.read_sql(query, connection, params=(period_start, period_end))
+    except pyodbc.Error as error:
+        raise OSError(f'Помилка завантаження MHL з MS SQL Server: {error}') from error
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def get_requisites_data():
     return load_requisites_file(PROJECT_ROOT / 'rekvizity.xlsx')
 
