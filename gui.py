@@ -3,7 +3,7 @@ import tkinter as tk
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from convertor import build_report_dataframe, generate_excel_report
+from convertor import build_report_dataframe, generate_excel_report, mhl_brand_counts
 from Data.Controller import get_mhl_data, get_pharmacy_data, load_requisites_file
 
 
@@ -177,11 +177,16 @@ class ReportApp:
             self.status_var.set('За вказаний період дані звіту відсутні.')
         else:
             self.loaded_period = period
+            lik_count, dd_count, unknown_count = mhl_brand_counts(mhl_data)
             status = f'Звіт: {len(data)} рядків'
             if mhl_error is not None:
                 status += f'; помилка MHL: {mhl_error}'
             else:
-                status += f'; MHL: {len(mhl_data)} рядків'
+                status += (
+                    f'; MHL SQL: {len(mhl_data)} рядків; '
+                    f'ЛІК: {lik_count}; ДД: {dd_count}; '
+                    f'невідомі: {unknown_count}'
+                )
             self.status_var.set(status)
 
     def _update_pharmacy_combo(self):

@@ -80,12 +80,13 @@ def build_mhl_dataframe(df, brand_filter_list):
         )
 
     work_df = df.copy()
-    work_df['BRAND'] = work_df['BRAND'].fillna('').astype(str).str.strip()
     allowed_brands = {
         str(brand).strip().casefold() for brand in brand_filter_list
     }
+    brand_values = work_df['BRAND'].fillna('').astype(str).str.strip().str.casefold()
+    sku_values = work_df['SKU_UA'].fillna('').astype(str).str.strip().str.casefold()
     work_df = work_df[
-        work_df['BRAND'].str.casefold().isin(allowed_brands)
+        brand_values.isin(allowed_brands) | sku_values.isin(allowed_brands)
     ].copy()
     if work_df.empty:
         return pd.DataFrame(
@@ -113,6 +114,21 @@ def build_mhl_dataframe(df, brand_filter_list):
         0,
     )
     return result.rename(columns={'SKU_UA': 'Назва товару'})
+
+
+def mhl_brand_counts(df):
+    """Return category counts for diagnostics before Excel generation."""
+    if df is None or df.empty or 'BRAND' not in df.columns:
+        return 0, 0, 0
+    brands = df['BRAND'].fillna('').astype(str).str.strip().str.casefold()
+    sku_names = df['SKU_UA'].fillna('').astype(str).str.strip().str.casefold()
+    lik = {str(brand).strip().casefold() for brand in LIK_BRANDS}
+    dd = {str(brand).strip().casefold() for brand in DD_BRANDS}
+    lik_match = brands.isin(lik) | sku_names.isin(lik)
+    dd_match = brands.isin(dd) | sku_names.isin(dd)
+    return int(lik_match.sum()), int(dd_match.sum()), int(
+        (~(lik_match | dd_match)).sum()
+    )
 
 
 def fill_mhl_worksheet(ws, mhl_df, period_start, period_end, contract_no, contract_date):
