@@ -70,11 +70,11 @@ def get_mhl_data(period_start, period_end):
                 ON sku.[DRUG_ID] = main.[DRUG_ID]
             OUTER APPLY (
                 SELECT TOP 1
-                    plan.[PENETRATION_TARGET]
-                FROM [dbo].[KA_Penetration_plan] AS plan
-                WHERE plan.[DRUG_ID] = main.[DRUG_ID]
-                  AND plan.[PERIOD] <= main.[DATE]
-                ORDER BY plan.[PERIOD] DESC
+                    [plan].[PENETRATION_TARGET]
+                FROM [dbo].[KA_Penetration_plan] AS [plan]
+                WHERE [plan].[DRUG_ID] = main.[DRUG_ID]
+                  AND [plan].[PERIOD] <= main.[DATE]
+                ORDER BY [plan].[PERIOD] DESC
             ) AS target
             WHERE main.[DATE] >= ? AND main.[DATE] <= ?
         """

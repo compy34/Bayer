@@ -81,7 +81,12 @@ def build_mhl_dataframe(df, brand_filter_list):
 
     work_df = df.copy()
     work_df['BRAND'] = work_df['BRAND'].fillna('').astype(str).str.strip()
-    work_df = work_df[work_df['BRAND'].isin(brand_filter_list)].copy()
+    allowed_brands = {
+        str(brand).strip().casefold() for brand in brand_filter_list
+    }
+    work_df = work_df[
+        work_df['BRAND'].str.casefold().isin(allowed_brands)
+    ].copy()
     if work_df.empty:
         return pd.DataFrame(
             columns=[
@@ -422,16 +427,19 @@ def generate_excel_report(
         selected_pharmacy='Усі аптеки',
         mhl_df=None,
 ):
-    if df is None or df.empty:
+    if (df is None or df.empty) and (mhl_df is None or mhl_df.empty):
         return
 
     # Розділяємо датасет на два звіти за списками з шаблону.
-    available_brands = df['BRAND'].dropna().astype(str).str.strip().unique()
-    lik_list = [brand for brand in LIK_BRANDS if brand in available_brands]
-    dd_list = [brand for brand in DD_BRANDS if brand in available_brands]
-
-    pivot_lik = build_report_dataframe(df, lik_list if lik_list else [])
-    pivot_dd = build_report_dataframe(df, dd_list if dd_list else [])
+    if df is not None and not df.empty:
+        available_brands = df['BRAND'].dropna().astype(str).str.strip().unique()
+        lik_list = [brand for brand in LIK_BRANDS if brand in available_brands]
+        dd_list = [brand for brand in DD_BRANDS if brand in available_brands]
+        pivot_lik = build_report_dataframe(df, lik_list)
+        pivot_dd = build_report_dataframe(df, dd_list)
+    else:
+        pivot_lik = None
+        pivot_dd = None
     mhl_lik = build_mhl_dataframe(mhl_df, LIK_BRANDS)
     mhl_dd = build_mhl_dataframe(mhl_df, DD_BRANDS)
 
