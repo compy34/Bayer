@@ -3,12 +3,39 @@ from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 from act_generator import generate_act_sheet
 
-# Списки брендів для розділення
+# Списки брендів із шаблону звітів.
 LIK_BRANDS = [
-    'Бепантен', 'Антифлу', 'Еріус', 'Реліф', 'Ренні',
-    'Терафлекс + Тералів', 'Бепантен Плюс', 'Тералів',
-    'Кальцемін', 'Терафлекс'
+    'Елевіт-3 600',
+    'Елевіт-3 600 ПОСМ',
+    'Бепантен',
+    'Антифлу',
+    'Еріус',
+    'Реліф',
+    'Супрадин-10__',
+    'Ренні',
+    'Терафлекс + Тералів',
+    'Терафлекс + Тералів ПОСМ',
+    'Бепантен Плюс',
+    'Тералів',
+    'Кальцемін',
+    'Бепантен Сенсідерм-4__',
+    'Терафлекс',
 ]
+
+DD_BRANDS = [
+    'Елевіт',
+    'Елевіт ПОСМ',
+    'Елевіт-3',
+    'Супрадин-13',
+    'Супрадин-10',
+    'Супрадин-10__',
+    'Бепантен Сенсідерм-4',
+    'Бепантен Сенсідерм-2',
+    'Бепантен Сенсідерм-2 ПОСМ',
+    'Бепантен Плюс__',
+]
+
+
 
 
 def build_report_dataframe(df, brand_filter_list=None):
@@ -268,10 +295,10 @@ def generate_excel_report(
     if df is None or df.empty:
         return
 
-    # Розділяємо датасет на ЛІК та решту (ДД)
-    available_brands = df['BRAND'].unique()
-    lik_list = [b for b in AVAILABLE_BRANDS_CHECK(available_brands) if b in LIK_BRANDS]
-    dd_list = [b for b in available_brands if b not in LIK_BRANDS]
+    # Розділяємо датасет на два звіти за списками з шаблону.
+    available_brands = df['BRAND'].dropna().astype(str).str.strip().unique()
+    lik_list = [brand for brand in LIK_BRANDS if brand in available_brands]
+    dd_list = [brand for brand in DD_BRANDS if brand in available_brands]
 
     pivot_lik = build_report_dataframe(df, lik_list if lik_list else [])
     pivot_dd = build_report_dataframe(df, dd_list if dd_list else [])
@@ -370,10 +397,3 @@ def generate_excel_report(
 
     wb.save(output_filename)
     return output_filename
-
-    wb.save(output_filename)
-    return output_filename
-
-
-def AVAILABLE_BRANDS_CHECK(brands):
-    return brands
