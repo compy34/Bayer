@@ -143,36 +143,46 @@ class ReportApp:
         )
 
         def load():
+            data = None
+            mhl_data = None
+            data_error = None
+            mhl_error = None
             try:
                 data = get_pharmacy_data(*period)
-                mhl_data = get_mhl_data(*period)
-                error = None
             except (OSError, TypeError, ValueError) as load_error:
-                data = None
-                mhl_data = None
-                error = load_error
+                data_error = load_error
+            try:
+                mhl_data = get_mhl_data(*period)
+            except (OSError, TypeError, ValueError) as load_error:
+                mhl_error = load_error
             self.root.after(
-                0, lambda: self._data_loaded(data, mhl_data, period, error)
+                0,
+                lambda: self._data_loaded(
+                    data, mhl_data, period, data_error, mhl_error
+                ),
             )
 
         threading.Thread(target=load, daemon=True).start()
 
-    def _data_loaded(self, data, mhl_data, period, error=None):
+    def _data_loaded(self, data, mhl_data, period, data_error=None, mhl_error=None):
         self.loading = False
         self.load_button.configure(state='normal')
         self.df = data
         self.df_mhl = mhl_data
-        if error is not None:
+        if data_error is not None:
             self.loaded_period = None
-            self.status_var.set(f'Помилка завантаження з БД: {error}')
+            self.status_var.set(f'Помилка завантаження звіту з БД: {data_error}')
         elif data is None or data.empty:
             self.loaded_period = None
-            self.status_var.set('За вказаний період дані відсутні.')
+            self.status_var.set('За вказаний період дані звіту відсутні.')
         else:
             self.loaded_period = period
-            self.status_var.set(
-                f'Дані за період завантажено. Рядків: {len(data)}'
-            )
+            status = f'Звіт: {len(data)} рядків'
+            if mhl_error is not None:
+                status += f'; помилка MHL: {mhl_error}'
+            else:
+                status += f'; MHL: {len(mhl_data)} рядків'
+            self.status_var.set(status)
 
     def _update_pharmacy_combo(self):
         """Заповнює комбобокс мережами з файлу реквізитів"""
