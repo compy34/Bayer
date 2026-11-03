@@ -147,6 +147,11 @@ class ReportApp:
             f'Завантаження даних з БД за період {period[0]} — {period[1]}...'
         )
 
+        # Get selected pharmacy for filtering
+        selected_pharmacy = self.pharmacy_name_var.get().strip()
+        if not selected_pharmacy or selected_pharmacy == 'Усі аптеки':
+            selected_pharmacy = None
+
         def load():
             data = None
             mhl_data = None
@@ -157,7 +162,8 @@ class ReportApp:
             except (OSError, TypeError, ValueError) as load_error:
                 data_error = load_error
             try:
-                mhl_data = get_mhl_data(*period)
+                # Pass selected pharmacy to filter MHL data at database level
+                mhl_data = get_mhl_data(*period, chain_name=selected_pharmacy)
             except (OSError, TypeError, ValueError) as load_error:
                 mhl_error = load_error
             self.root.after(
@@ -245,6 +251,30 @@ class ReportApp:
 
         if filtered.empty:
             return self.df.iloc[0:0]
+
+        return filtered
+
+    def _filtered_mhl_data(self):
+        """Filter MHL data by selected pharmacy/chain."""
+        if self.df_mhl is None or self.df_mhl.empty:
+            return self.df_mhl
+
+        selected_name = self.pharmacy_name_var.get().strip()
+        if not selected_name or selected_name == 'Усі аптеки':
+            return self.df_mhl
+
+        # MHL data uses CHAIN_NAME column
+        if 'CHAIN_NAME' in self.df_mhl.columns:
+            filtered = self.df_mhl[
+                self.df_mhl['CHAIN_NAME'].fillna('').astype(str).str.strip().str.lower()
+                == selected_name.lower()
+            ]
+        else:
+            # Fallback - return empty if no chain column
+            return self.df_mhl.iloc[0:0]
+
+        if filtered.empty:
+            return self.df_mhl.iloc[0:0]
 
         return filtered
     def select_requisites_file(self):
@@ -347,7 +377,7 @@ class ReportApp:
                 period_start=start,
                 period_end=end,
                 selected_pharmacy=self.pharmacy_name_var.get(),
-                mhl_df=self.df_mhl,
+                mhl_df=self._filtered_mhl_data(),
             )
         except (OSError, ValueError, KeyError) as error:
             messagebox.showerror('Помилка', str(error))

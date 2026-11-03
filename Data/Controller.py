@@ -42,8 +42,14 @@ def get_pharmacy_data(period_start, period_end):
             connection.close()
 
 
-def get_mhl_data(period_start, period_end):
-    """Load MHL metrics and the latest penetration target for each product."""
+def get_mhl_data(period_start, period_end, chain_name=None):
+    """Load MHL metrics and the latest penetration target for each product.
+
+    Args:
+        period_start: Start date in YYYY-MM-DD format
+        period_end: End date in YYYY-MM-DD format
+        chain_name: Optional pharmacy chain/network name to filter by (e.g., from UI selection)
+    """
     connection = None
     try:
         conn_str = (
@@ -53,6 +59,8 @@ def get_mhl_data(period_start, period_end):
             r'Trusted_Connection=yes;'
         )
         connection = pyodbc.connect(conn_str)
+
+        # Base query
         query = """
             SELECT
                 main.[DATE],
@@ -78,7 +86,15 @@ def get_mhl_data(period_start, period_end):
             ) AS target
             WHERE main.[DATE] >= ? AND main.[DATE] <= ?
         """
-        return pd.read_sql(query, connection, params=(period_start, period_end))
+
+        params = [period_start, period_end]
+
+        # Add chain filter if provided
+        if chain_name and chain_name.strip() and chain_name.strip() != 'Усі аптеки':
+            query += " AND main.[CHAIN_NAME] = ?"
+            params.append(chain_name.strip())
+
+        return pd.read_sql(query, connection, params=params)
     except pyodbc.Error as error:
         raise OSError(f'Помилка завантаження MHL з MS SQL Server: {error}') from error
     finally:
