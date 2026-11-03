@@ -147,10 +147,8 @@ class ReportApp:
             f'Завантаження даних з БД за період {period[0]} — {period[1]}...'
         )
 
-        # Get selected pharmacy for filtering
+        # Get selected pharmacy for filtering (always a specific network now)
         selected_pharmacy = self.pharmacy_name_var.get().strip()
-        if not selected_pharmacy or selected_pharmacy == 'Усі аптеки':
-            selected_pharmacy = None
 
         def load():
             data = None
@@ -224,18 +222,22 @@ class ReportApp:
                 unique_chains = sorted(
                     c for c in chains.unique() if c and c.lower() != 'nan'
                 )
-                self.pharmacy_combo['values'] = ('Усі аптеки', *unique_chains)
-                self.pharmacy_combo.current(0)
+                # Only show specific networks, no "Усі аптеки" option
+                self.pharmacy_combo['values'] = tuple(unique_chains)
+                if unique_chains:
+                    self.pharmacy_combo.current(0)
                 self.status_var.set(
                     f'Завантажено мереж з реквізитів: {len(unique_chains)}'
                 )
 
     def _filtered_pharmacy_data(self):
+        """Filter merchandising data by selected network (always a specific network)."""
         if self.df is None or self.df.empty:
             raise ValueError('Дані з бази відсутні.')
+
         selected_name = self.pharmacy_name_var.get().strip()
-        if not selected_name or selected_name == 'Усі аптеки':
-            return self.df
+        if not selected_name:
+            raise ValueError('Будь ласка, оберіть мережу.')
 
         # Перевіряємо наявність колонки CHAIN_NAME в датасеті з бази даних
         if 'CHAIN_NAME' in self.df.columns:
@@ -255,12 +257,12 @@ class ReportApp:
         return filtered
 
     def _filtered_mhl_data(self):
-        """Filter MHL data by selected pharmacy/chain."""
+        """Filter MHL data by selected network (always a specific network)."""
         if self.df_mhl is None or self.df_mhl.empty:
             return self.df_mhl
 
         selected_name = self.pharmacy_name_var.get().strip()
-        if not selected_name or selected_name == 'Усі аптеки':
+        if not selected_name:
             return self.df_mhl
 
         # MHL data uses CHAIN_NAME column
